@@ -1,0 +1,176 @@
+---
+title: Quarto Computations
+echo: false
+fig-height: 3.5
+fig-width: 6
+format:
+  html:
+    embed-resources: true
+---
+
+[View this project on GitHub](https://github.com/kailynnk/GSB-544.git)
+
+# Palmer Penguins Modeling
+
+Import the Palmer Penguins dataset and print out the first few rows.
+
+Suppose we want to predict `bill_depth_mm` using the other variables in the dataset.
+
+Which variables would we need to **dummify**?
+
+```{python}
+#pip install palmerpenguins
+%pip install -U scikit-learn
+
+```
+
+```{python}
+from palmerpenguins import load_penguins
+from sklearn.linear_model import LinearRegression
+import pandas as pd
+import numpy as np
+```
+
+```{python}
+penguins = load_penguins()
+penguins.head(5)
+```
+
+```{python}
+# dummify species, island, sex
+penguins2 = pd.get_dummies(penguins, columns=['species', 'island', 'sex'])
+penguins2[["species_Adelie",	"species_Chinstrap",	"species_Gentoo",	"island_Biscoe",	"island_Dream",	"island_Torgersen",	"sex_female",	"sex_male"]] = penguins2[["species_Adelie",	"species_Chinstrap",	"species_Gentoo",	"island_Biscoe",	"island_Dream",	"island_Torgersen",	"sex_female",	"sex_male"]].astype(int)
+penguins2 = penguins2.dropna()
+penguins2.head(5)
+```
+
+Let's use `bill_length_mm` to predict `bill_depth_mm`. Prepare your data and fit the following models on the entire dataset:
+
+* Simple linear regression (e.g. straight-line) model
+* Quadratic (degree 2 polynomial) model
+* Cubic (degree 3 polynomial) model
+* Degree 10 polynomial model
+
+Make predictions for each model and plot your fitted models on the scatterplot.
+
+```{python}
+linear_model = LinearRegression()
+linear_model.fit(penguins2[["bill_length_mm"]],
+                 penguins2["bill_depth_mm"])
+
+linear_model.coef_, linear_model.intercept_
+```
+
+```{python}
+penguins2["linear_predict"] = linear_model.predict(penguins2[["bill_length_mm"]])
+```
+
+```{python}
+X_new = pd.DataFrame()
+X_new["bill_length_mm"] = np.linspace(30, 60, num=2)
+y_new_ = pd.Series(
+    linear_model.predict(X_new),
+    index=X_new["bill_length_mm"])
+
+penguins2.plot.scatter(x="bill_length_mm", y="bill_depth_mm")
+y_new_.plot.line(c = "orange")
+```
+
+**Quadratic**
+
+```{python}
+penguins2["bill_length_mm_squared"] = penguins2["bill_length_mm"] ** 2
+penguins2.head(5)
+```
+
+```{python}
+quadratic_model = LinearRegression()
+quadratic_model.fit(penguins2[["bill_length_mm", "bill_length_mm_squared"]],
+                    penguins2["bill_depth_mm"])
+
+quadratic_model.coef_, quadratic_model.intercept_
+```
+
+```{python}
+X_new = pd.DataFrame()
+X_new["bill_length_mm"] = np.linspace(30, 60, num=1000)
+X_new["bill_length_mm_squared"] = X_new["bill_length_mm"] ** 2
+y_new_ = pd.Series(
+    quadratic_model.predict(X_new),
+    index=X_new["bill_length_mm"])
+
+penguins2.plot.scatter(x="bill_length_mm", y="bill_depth_mm")
+y_new_.plot.line(c = "orange")
+```
+
+**Cubic**
+
+```{python}
+penguins2["bill_length_mm_cubed"] = penguins2["bill_length_mm"] ** 3
+penguins2.head(5)
+```
+
+```{python}
+cubic_model = LinearRegression()
+cubic_model.fit(penguins2[["bill_length_mm", "bill_length_mm_squared", "bill_length_mm_cubed"]],
+                penguins2["bill_depth_mm"])
+
+cubic_model.coef_, cubic_model.intercept_
+```
+
+```{python}
+X_new = pd.DataFrame()
+X_new["bill_length_mm"] = np.linspace(30, 60, num=1000)
+X_new["bill_length_mm_squared"] = X_new["bill_length_mm"] ** 2
+X_new["bill_length_mm_cubed"] = X_new["bill_length_mm"] ** 3
+y_new_ = pd.Series(
+    cubic_model.predict(X_new),
+    index=X_new["bill_length_mm"])
+
+penguins2.plot.scatter(x="bill_length_mm", y="bill_depth_mm")
+y_new_.plot.line(c = "orange")
+```
+
+**Degree 10 Polynomial**
+
+```{python}
+from sklearn.preprocessing import PolynomialFeatures
+```
+
+```{python}
+# helps transform variables automatically
+poly_features = PolynomialFeatures(degree=10)
+x_poly = poly_features.fit_transform(penguins2[["bill_length_mm"]])
+x_poly.shape
+```
+
+```{python}
+poly10_model = LinearRegression()
+poly10_model.fit(x_poly, penguins2["bill_depth_mm"])
+
+poly10_model.coef_, poly10_model.intercept_
+```
+
+```{python}
+X_new = pd.DataFrame()
+X_new["bill_length_mm"] = np.linspace(30, 60, num=1000)
+x_new_poly = poly_features.transform(X_new)
+y_new_ = pd.Series(
+    poly10_model.predict(x_new_poly),
+    index=X_new["bill_length_mm"])
+
+penguins2.plot.scatter(x="bill_length_mm", y="bill_depth_mm")
+y_new_.plot.line(c = "orange")
+```
+
+**Are any of the models above underfitting the data? If so, which ones and how can you tell?**
+
+The linear and quadratic model seem to be underfitting the data. It doesn't really seem to capture the true pattern or have a general idea about the direction of the data.
+
+**Are any of thhe models above overfitting the data? If so, which ones and how can you tell?**
+
+The degree 10 polynomial seems to be a little bit more overfitting since it completely mimics/follows the exact pattern of the training data.
+
+**Which of the above models do you think fits the data best and why?**
+
+The cubic model seems to be the best one because it doesn't completely mimic the training data but it also looks like it captures its general pattern.
