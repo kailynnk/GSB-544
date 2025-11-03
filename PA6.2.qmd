@@ -1,0 +1,103 @@
+---
+title: Quarto Computations
+echo: false
+fig-height: 3.5
+fig-width: 6
+format:
+  html:
+    embed-resources: true
+---
+
+# Palmer Penguins Modeling
+
+Import the Palmer Penguins dataset and print out the first few rows.
+
+Suppose we want to predict `bill_depth_mm` using the other variables in the dataset.
+
+**Dummify** all variables that require this.
+
+```{python}
+from palmerpenguins import load_penguins
+from sklearn.linear_model import LinearRegression
+from plotnine import *
+import pandas as pd
+import numpy as np
+```
+
+```{python}
+penguins = load_penguins()
+penguins.head(5)
+```
+
+```{python}
+# dummify species, island, sex
+penguins2 = pd.get_dummies(penguins, columns=['species', 'island', 'sex'])
+penguins2[["species_Adelie",	"species_Chinstrap",	"species_Gentoo",	"island_Biscoe",	"island_Dream",	"island_Torgersen",	"sex_female",	"sex_male"]] = penguins2[["species_Adelie",	"species_Chinstrap",	"species_Gentoo",	"island_Biscoe",	"island_Dream",	"island_Torgersen",	"sex_female",	"sex_male"]].astype(int)
+penguins2 = penguins2.dropna()
+penguins2.head(5)
+```
+
+Let's use the other variables to predict `bill_depth_mm`. Prepare your data and fit the following models on a training dataset subset of the entire dataset:
+
+* Four different models, each containing a different set of predictor variables
+
+Create a plot like the right plot of Fig 1. in our `Model Validation` chapter with the training and test error plotted for each of your four models.
+
+Which of your models was best?
+
+```{python}
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_squared_error
+
+X_train, X_test, y_train, y_test = train_test_split(penguins2.drop(['bill_depth_mm'], axis=1), penguins2['bill_depth_mm'], test_size=0.25)
+```
+
+```{python}
+models = { "Model 1": ["sex_female"],
+           "Model 2": ["sex_female", "flipper_length_mm",	"body_mass_g"],
+           "Model 3": ["species_Adelie", "species_Chinstrap", "island_Biscoe", "island_Dream", "flipper_length_mm",	"body_mass_g"],
+           "Model 4": ["species_Adelie", "species_Chinstrap", "island_Biscoe", "island_Dream", "flipper_length_mm",	"body_mass_g", "sex_female"]}
+```
+
+```{python}
+rows = []
+for name, Xcols in models.items():
+    X = X_train[Xcols]
+    model = LinearRegression().fit(X, y_train)
+    y_train_ = model.predict(X_train[Xcols])
+    X_train[f"{name}_predict"] = y_train_
+    test_mse = mean_squared_error(y_train, y_train_)
+    rows.append({"Model": name, "Train MSE": test_mse, "Num Predictors": len(Xcols)})
+
+train_error = pd.DataFrame(rows)
+train_error
+```
+
+```{python}
+rows = []
+for name, Xcols in models.items():
+    X = X_train[Xcols]
+    model = LinearRegression().fit(X, y_train)
+    y_test_ = model.predict(X_test[Xcols])
+    X_test[f"{name}_predict"] = y_test_
+    test_mse = mean_squared_error(y_test, y_test_)
+    rows.append({"Model": name, "Test MSE": test_mse, "Num Predictors": len(Xcols)})
+
+test_error = pd.DataFrame(rows)
+test_error
+```
+
+```{python}
+df_error = train_error.merge(test_error, on=["Model", "Num Predictors"])
+df_error_long = df_error[["Model", "Train MSE", "Test MSE", "Num Predictors"]].melt(id_vars=["Model", "Num Predictors"], value_name = "MSE", var_name = "type")
+```
+
+```{python}
+(ggplot(df_error_long,
+        aes(x = "Num Predictors",
+            y = "MSE",
+            color = "type")) +
+ geom_point() + 
+ geom_line()+
+ labs(x = "Flexibility"))
+```
