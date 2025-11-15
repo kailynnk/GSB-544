@@ -1,0 +1,203 @@
+---
+title: "PA 8.1"
+author: "Kailyn Kragas"
+format:
+  html:
+    toc: true
+    code-fold: true
+    embed-resources: true
+echo: true
+warning: false
+theme: lux
+---
+
+[View this project on GitHub](https://github.com/kailynnk/GSB-544.git)
+
+# Palmer Penguins Modeling
+
+Import the Palmer Penguins dataset and print out the first few rows.
+
+Suppose we want to predict `bill_depth_mm` using the other variables in the dataset.
+
+**Dummify** all variables that require this.
+
+```{python}
+! pip install palmerpenguins
+```
+
+```{python}
+import pandas as pd
+import numpy as np
+from palmerpenguins import load_penguins
+from sklearn.pipeline import Pipeline
+from sklearn.compose import make_column_selector, ColumnTransformer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, PolynomialFeatures
+from sklearn.linear_model import LinearRegression
+from sklearn.neighbors import KNeighborsRegressor
+from sklearn.tree import DecisionTreeRegressor
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV
+from sklearn.metrics import r2_score, mean_squared_error
+```
+
+```{python}
+penguins = load_penguins()
+penguins = penguins.dropna()
+penguins.head(5)
+```
+
+Let's use the other variables to predict `bill_depth_mm`. Prepare your data and fit the following models on the entire dataset:
+
+* Your best multiple linear regression model from before
+* Two kNN models (for different values of K)
+* A decision tree model
+
+Create a plot like the right plot of Fig 1. in our `Model Validation` chapter with the training and test error plotted for each of your four models.
+
+Which of your models was best?
+
+```{python}
+X = penguins.drop(columns = ["bill_depth_mm"])
+y = penguins["bill_depth_mm"]
+
+cat_cols = ['species', 'island', 'sex']
+num_cols = ['remainder__bill_length_mm', 'remainder__flipper_length_mm', 'remainder__body_mass_g']
+
+ct = ColumnTransformer([('dummify', OneHotEncoder(sparse_output=False, handle_unknown='ignore'), cat_cols)],
+                         remainder='passthrough').set_output(transform="pandas")
+
+ct_standardize = ColumnTransformer([('standardize', StandardScaler(), num_cols)],
+                                   remainder='passthrough').set_output(transform="pandas")
+```
+
+## LRM
+
+```{python}
+lrm_pipeline = Pipeline([("preprocessing", ct),
+                         ("standardize", ct_standardize),
+                         ("linear_regression", LinearRegression())]).set_output(transform="pandas")
+```
+
+```{python}
+lr_scores = cross_val_score(lrm_pipeline, X, y, cv = 5, scoring = 'neg_mean_squared_error')
+lr_scores.mean()
+```
+
+## KNN
+
+```{python}
+knn_pipeline = Pipeline([("preprocessing", ct),
+                         ("standardize", ct_standardize),
+                         ("knn", KNeighborsRegressor())]).set_output(transform="pandas")
+```
+
+```{python}
+param_grid = {'knn__n_neighbors': np.arange(1,8)}
+
+gscv = GridSearchCV(knn_pipeline, param_grid=param_grid, cv = 5, scoring='neg_mean_squared_error')
+gscv_dt_fitted = gscv.fit(X, y)
+gscv_dt_results = pd.DataFrame(gscv_dt_fitted.cv_results_)
+gscv_dt_results[['param_knn__n_neighbors', 'mean_test_score']].sort_values(by='mean_test_score', ascending=False)
+```
+
+```{python}
+knn_pipeline_n4 = Pipeline([("preprocessing", ct),
+                         ("standardize", ct_standardize),
+                         ("knn",  KNeighborsRegressor(n_neighbors=4))])
+
+fitted_knn4 = knn_pipeline_n4.fit(X, y)
+knn4_cv = cross_val_score(fitted_knn4, X, y, cv = 5, scoring = 'neg_mean_squared_error')
+```
+
+```{python}
+knn_pipeline_n3 = Pipeline([("preprocessing", ct),
+                         ("standardize", ct_standardize),
+                         ("knn",  KNeighborsRegressor(n_neighbors=3))])
+
+fitted_knn3 = knn_pipeline_n3.fit(X, y)
+knn3_cv = cross_val_score(fitted_knn3, X, y, cv = 5, scoring = 'neg_mean_squared_error')
+```
+
+## Decision Tree
+
+```{python}
+dt_pipeline = Pipeline([("preprocessing", ct),
+                        ("decision_trees", DecisionTreeRegressor())]).set_output(transform="pandas")
+```
+
+```{python}
+max_depths = {'decision_trees__max_depth': np.array([2, 4, 6, 8, 10])}
+
+gscv = GridSearchCV(dt_pipeline, param_grid=max_depths, cv = 5, scoring='neg_mean_squared_error')
+gscv_dt_fitted = gscv.fit(X, y)
+gscv_dt_results = pd.DataFrame(gscv_dt_fitted.cv_results_)
+gscv_dt_results[['param_decision_trees__max_depth', 'mean_test_score']].sort_values(by='mean_test_score', ascending=False)
+```
+
+```{python}
+dt_pipeline2 = Pipeline([("preprocessing", ct),
+                         ("decision_trees", DecisionTreeRegressor(max_depth=2))])
+
+fitted_dt = dt_pipeline2.fit(X, y)
+```
+
+```{python}
+dt_cv = cross_val_score(fitted_dt, X, y, cv = 5, scoring = 'neg_mean_squared_error')
+dt_cv
+```
+
+```{python}
+dt_cv.mean()
+```
+
+### Results
+
+Model with the smallest MSE is the decision tree with Max Depth = 2
+
+**Create a plot like the right plot of Fig 1. in our `Model Validation` chapter with the training and test error plotted for each of your four models.**
+
+```{python}
+from plotnine import *
+```
+
+
+```{python}
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.30, random_state=0)
+
+models = {"Linear Regression": LinearRegression(),
+          "Decision Tree": DecisionTreeRegressor(max_depth=2),
+          "kNN n=4": KNeighborsRegressor(n_neighbors=4),
+          "kNN n=3": KNeighborsRegressor(n_neighbors=3)}
+
+rows = []
+for name, est in models.items():
+  if name == "Decision Tree":
+    pipe = Pipeline([("preprocessing", ct),  
+                     ("model", est)])
+  else:
+    pipe = Pipeline([("preprocessing", ct), 
+                     ("standardize", ct_standardize), 
+                     ("model", est)])
+  
+  pipe.fit(X_train, y_train)
+
+  y_pred_tr = pipe.predict(X_train)
+  y_pred_te = pipe.predict(X_test)
+
+  rows.append({"Model": name, "type": "Train MSE",
+               "MSE": mean_squared_error(y_train, y_pred_tr)})
+  rows.append({"Model": name, "type": "Test MSE",
+               "MSE": mean_squared_error(y_test, y_pred_te)})
+
+df_error_long = pd.DataFrame(rows)
+
+order = ["Linear Regression", "Decision Tree", "kNN n=4", "kNN n=3"]
+df_error_long["Model"] = pd.Categorical(df_error_long["Model"], categories=order, ordered=True)
+```
+
+```{python}
+(ggplot(df_error_long, aes(x = "Model", y = "MSE", color = "type", group = "type")) + 
+ geom_point() + 
+ geom_line() + 
+ labs(x = "Model", y = "MSE") +
+ theme_minimal())
+```

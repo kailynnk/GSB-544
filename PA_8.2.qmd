@@ -1,0 +1,216 @@
+---
+title: "PA 8.2"
+author: "Kailyn Kragas"
+format:
+  html:
+    toc: true
+    code-fold: true
+    embed-resources: true
+echo: true
+warning: false
+theme: lux
+---
+
+[View this project on GitHub](https://github.com/kailynnk/GSB-544.git)
+
+# Palmer Penguins Modeling
+
+Import the Palmer Penguins dataset and print out the first few rows.
+
+Suppose we want to predict `species` using the other variables in the dataset.
+
+**Dummify** all variables that require this.
+
+```{python}
+import pandas as pd
+import numpy as np
+from plotnine import *
+from palmerpenguins import load_penguins
+from sklearn.pipeline import Pipeline
+from sklearn.compose import make_column_selector, ColumnTransformer
+from sklearn.preprocessing import StandardScaler, OneHotEncoder, PolynomialFeatures
+from sklearn.neighbors import KNeighborsClassifier
+from sklearn.tree import DecisionTreeClassifier
+from sklearn.model_selection import train_test_split, cross_val_score, GridSearchCV, cross_val_predict, StratifiedKFold
+from sklearn.metrics import confusion_matrix, accuracy_score, precision_score, recall_score, roc_auc_score, f1_score, roc_curve, classification_report
+import matplotlib.pyplot as plt
+```
+
+```{python}
+penguins = load_penguins()
+penguins = penguins.dropna()
+penguins.head(5)
+```
+
+```{python}
+X = penguins.drop(columns = ["species"])
+y = penguins["species"]
+
+cat_cols = ['island', 'sex']
+num_cols = ['remainder__bill_length_mm', 'remainder__bill_depth_mm', 'remainder__flipper_length_mm', 'remainder__body_mass_g']
+
+ct = ColumnTransformer([('dummify', OneHotEncoder(sparse_output=False, handle_unknown='ignore'), cat_cols)],
+                         remainder='passthrough').set_output(transform="pandas")
+
+ct_standardize = ColumnTransformer([('standardize', StandardScaler(), num_cols)],
+                                   remainder='passthrough').set_output(transform="pandas")
+                                   
+cv = StratifiedKFold(n_splits = 5, shuffle = True, random_state = 0)
+```
+
+Let's use the other variables to predict `species`. Prepare your data and fit the following models on the entire dataset:
+
+* Two kNN models (for different values of K)
+* Two decision tree models (for different complexities of trees)
+
+Compute the following, for each of your models, on test data. Keep in mind that you may need to stratify your creation of the training and test data.
+
+* Confusion matrix
+* Overall Accuracy
+* Precision, Recall, AUC, and F1-score for each species
+
+### KNN
+
+```{python}
+knn_pipeline = Pipeline([("preprocessing", ct),
+                         ("standardize", ct_standardize),
+                         ("knn", KNeighborsClassifier())]).set_output(transform="pandas")
+```
+
+```{python}
+param_grid = {'knn__n_neighbors': np.arange(1,8)}
+
+gscv = GridSearchCV(knn_pipeline, param_grid = param_grid, cv = cv, scoring='f1_macro')
+gscv_knn_fitted = gscv.fit(X, y)
+gscv_knn_results = pd.DataFrame(gscv_knn_fitted.cv_results_)
+gscv_knn_results[['param_knn__n_neighbors', 'mean_test_score']].sort_values(by = 'mean_test_score', ascending=False)
+```
+
+```{python}
+knn_pipeline_n7 = Pipeline([("preprocessing", ct),
+                         ("standardize", ct_standardize),
+                         ("knn", KNeighborsClassifier(n_neighbors = 7))])
+
+fitted_knn7 = knn_pipeline_n7.fit(X, y)
+
+y_pred_knn7 = cross_val_predict(fitted_knn7, X, y, cv = 5)
+
+cm_knn7 = confusion_matrix(y, y_pred_knn7)
+pd.DataFrame(cm_knn7, index = fitted_knn7.classes_, columns = fitted_knn7.classes_)
+```
+
+```{python}
+print(classification_report(y, y_pred_knn7))
+```
+
+```{python}
+# auc needs probs
+y_pred2_knn7 = cross_val_predict(fitted_knn7, X, y, cv = 5, method = "predict_proba")
+roc_auc_score(y, y_pred2_knn7, multi_class = "ovr", average = "macro")
+```
+
+```{python}
+knn_pipeline_n5 = Pipeline([("preprocessing", ct),
+                         ("standardize", ct_standardize),
+                         ("knn", KNeighborsClassifier(n_neighbors = 5))])
+
+fitted_knn5 = knn_pipeline_n5.fit(X, y)
+
+y_pred_knn5 = cross_val_predict(fitted_knn5, X, y, cv = 5)
+
+cm_knn5 = confusion_matrix(y, y_pred_knn5)
+pd.DataFrame(cm_knn5, index = fitted_knn5.classes_, columns = fitted_knn5.classes_)
+```
+
+```{python}
+print(classification_report(y, y_pred_knn5))
+```
+
+```{python}
+# auc needs probs
+y_pred2_knn5 = cross_val_predict(fitted_knn5, X, y, cv = 5, method = "predict_proba")
+roc_auc_score(y, y_pred2_knn5, multi_class = "ovr", average = "macro")
+```
+
+### Decision Trees
+
+```{python}
+dt_pipeline = Pipeline([("preprocessing", ct),
+                         ("decision_tree", DecisionTreeClassifier())]).set_output(transform="pandas")
+```
+
+```{python}
+param_grid = {'decision_tree__max_depth': np.arange(1,13)}
+
+gscv = GridSearchCV(dt_pipeline, param_grid = param_grid, cv = cv, scoring='f1_macro')
+gscv_dt_fitted = gscv.fit(X, y)
+gscv_dt_results = pd.DataFrame(gscv_dt_fitted.cv_results_)
+gscv_dt_results[['param_decision_tree__max_depth', 'mean_test_score']].sort_values(by = 'mean_test_score', ascending=False).head()
+```
+
+```{python}
+dt_pipeline5 = Pipeline([("preprocessing", ct),
+                          ("decision_tree", DecisionTreeClassifier(max_depth = 5))])
+
+fitted_dt5 = dt_pipeline5.fit(X, y)
+
+y_pred_dt5 = cross_val_predict(fitted_dt5, X, y, cv=5)
+
+cm_dt5 = confusion_matrix(y, y_pred_dt5)
+pd.DataFrame(cm_dt5, index = fitted_dt5.classes_, columns = fitted_dt5.classes_)
+```
+
+```{python}
+print(classification_report(y, y_pred_dt5))
+```
+
+```{python}
+# auc needs probs
+y_pred2_dt5 = cross_val_predict(fitted_dt5, X, y, cv = 5, method="predict_proba")
+roc_auc_score(y, y_pred2_dt5, multi_class="ovr", average="macro")
+```
+
+```{python}
+dt_pipeline12 = Pipeline([("preprocessing", ct),
+                          ("decision_tree", DecisionTreeClassifier(max_depth = 12))])
+
+fitted_dt12 = dt_pipeline12.fit(X, y)
+
+y_pred_dt12 = cross_val_predict(fitted_dt12, X, y, cv=5)
+
+cm_dt12 = confusion_matrix(y, y_pred_dt12)
+pd.DataFrame(cm_dt12, index = fitted_dt12.classes_, columns = fitted_dt12.classes_)
+```
+
+```{python}
+print(classification_report(y, y_pred_dt12))
+```
+
+```{python}
+# auc needs probs
+y_pred2_dt12 = cross_val_predict(fitted_dt12, X, y, cv = 5, method = "predict_proba")
+roc_auc_score(y, y_pred2_dt12, multi_class="ovr", average="macro")
+```
+
+### Create one ROC plot for the species of your choice.
+
+```{python}
+adelie_preds = y_pred2_dt12[:, 0]
+y_true = (y == "Adelie").astype(int)
+
+roc_curve(y_true, adelie_preds)
+```
+
+```{python}
+fpr, tpr, _ = roc_curve(y_true, adelie_preds)
+
+df_roc = pd.DataFrame({"fpr": fpr, "tpr": tpr})
+
+(ggplot(df_roc, aes(x = "fpr", y = "tpr")) + 
+  geom_line() + 
+  geom_abline(linetype = "dashed", color = "gray") + 
+  labs(title = "Adelie ROC Curve",
+      x = "FPR", 
+      y = "TPR") + 
+  theme_light())
+```
